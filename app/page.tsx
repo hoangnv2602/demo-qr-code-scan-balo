@@ -63,7 +63,7 @@ export default function Home() {
         onScan={handleScan}
         paused={isPaused}
       />
-      <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '0' }}>
+      <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', alignSelf: 'flex-start', gap: '0' }}>
         <span>Họ tên: {name}</span>
         <br />
         <span>Giới tính: {gender}</span>
