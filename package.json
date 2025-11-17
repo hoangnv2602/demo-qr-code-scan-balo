@@ -9,7 +9,11 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@undecaf/zbar-wasm": "0.11.0",
     "@yudiel/react-qr-scanner": "2.4.1",
+    "@zxing/browser": "0.1.5",
+    "@zxing/library": "0.21.3",
+    "jsqr": "1.4.0",
     "next": "16.0.3",
     "react": "19.2.0",
     "react-dom": "19.2.0"

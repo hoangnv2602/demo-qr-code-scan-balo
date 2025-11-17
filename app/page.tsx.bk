@@ -1,0 +1,220 @@
+'use client';
+
+// import React, { useState } from 'react';
+// import { Scanner } from '@yudiel/react-qr-scanner';
+
+// export default function Home() {
+  
+//   const [stringQR, setStringQR] = useState('');
+//   const [name, setName] = useState('');
+//   const [gender, setGender] = useState('');
+//   const [dob, setDob] = useState('');
+//   const [age, setAge] = useState<number | null>(null);
+//   const [status, setStatus] = useState('');
+
+//   const [isPaused, setIsPaused] = useState(false);
+
+//   const handleScan = (result: any) => {
+//     if (!result) return;
+//     const raw = result[0]?.rawValue;
+//     setStringQR(raw);
+//     console.log('Scanned QR Code:', raw);
+//     // Tách chuỗi theo dấu |
+//     const parts = raw.split('|');
+//     if (parts.length >= 3) {
+//       setName(parts[2]);
+//       setDob(parts[3]);
+//       setGender(parts[4]);
+
+//       const dobRaw = parts[3];
+      
+//       if (dobRaw.length === 8) {
+//         const day = dobRaw.substring(0, 2);
+//         const month = dobRaw.substring(2, 4);
+//         const year = dobRaw.substring(4, 8);
+//         const formattedDob = `${day}/${month}/${year}`;
+//         setDob(formattedDob);
+
+//         // Tính tuổi
+//         const birthDate = new Date(`${year}-${month}-${day}`);
+//         const today = new Date();
+//         let calculatedAge = today.getFullYear() - birthDate.getFullYear();
+//         const m = today.getMonth() - birthDate.getMonth();
+//         if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) {
+//           calculatedAge--;
+//         }
+//         setAge(calculatedAge);
+
+//         if (calculatedAge > 18) {
+//           setStatus('Trên 18 tuổi');
+//         } else if (calculatedAge === 18) {
+//           setStatus('Đủ 18 tuổi');
+//         } else {
+//           setStatus('Chưa đủ 18 tuổi');
+//         }
+//       }
+//     }
+//   };
+
+//   return (
+//     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '20px' }}>
+//       <h2 style={{ marginTop: '20px' }}>Kiểm tra thông tin customer</h2>
+//       <Scanner
+//         onScan={handleScan}
+//         components={{
+//           onOff: true, // Show camera on/off button
+//           torch: true, // Show torch/flashlight button (if supported)
+//           zoom: true, // Show zoom control (if supported)
+//           finder: true, // Show finder overlay
+//         }}
+//         paused={isPaused}
+//       />
+//       <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', alignSelf: 'flex-start', gap: '0' }}>
+//         <span>Họ tên: {name}</span>
+//         <br />
+//         <span>Giới tính: {gender}</span>
+//         <br />
+//         <span>Ngày sinh: {dob}</span>
+//         <br />
+//         <span>Tuổi: {age}</span>
+//         <br/>
+//         <span style={{ fontWeight: 'bold', color: age !== null && age < 18 ? 'red' : 'green' }}>Trạng thái: {status}</span>
+//       </div>
+//     </div>
+//   );
+// }
+
+import React, { useEffect, useRef, useState } from "react";
+import { BrowserQRCodeReader, IScannerControls } from "@zxing/browser";
+
+const Home: React.FC = () => {
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+
+  const [result, setResult] = useState<string>("");
+
+  useEffect(() => {
+    let controls: IScannerControls | null = null;
+    const reader = new BrowserQRCodeReader();
+
+    const startScanner = async () => {
+      if (!videoRef.current) return;
+
+      controls = await reader.decodeFromVideoDevice(
+        undefined,
+        videoRef.current,
+        async () => {
+          if (!canvasRef.current || !window.cv) return;
+
+          const canvas = canvasRef.current;
+          const ctx = canvas.getContext("2d");
+          if (!ctx || !videoRef.current) return;
+
+          // draw video frame
+          ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
+
+          const src = new window.cv.Mat();
+          const hsv = new window.cv.Mat();
+          const enhancedColor = new window.cv.Mat();
+          const sharpened = new window.cv.Mat();
+
+          try {
+            // Read frame to OpenCV
+            window.cv.imread(canvas, src);
+
+            // Convert to HSV
+            window.cv.cvtColor(src, hsv, window.cv.COLOR_RGBA2HSV);
+
+            // Split HSV channels
+            const channels = new window.cv.MatVector();
+            window.cv.split(hsv, channels);
+
+            // Equalize V channel
+            const v = channels.get(2);
+            const vEq = new window.cv.Mat();
+            window.cv.equalizeHist(v, vEq);
+
+            channels.set(2, vEq);
+            window.cv.merge(channels, hsv);
+
+            // Convert back to RGB
+            window.cv.cvtColor(hsv, enhancedColor, window.cv.COLOR_HSV2RGB);
+
+            // Sharpen filter
+            const kernel = window.cv.matFromArray(3, 3, window.cv.CV_32FC1, [
+              0, -1, 0,
+              -1, 5, -1,
+              0, -1, 0,
+            ]);
+            window.cv.filter2D(enhancedColor, sharpened, window.cv.CV_8UC1, kernel);
+
+            // Draw sharpened result to canvas
+            window.cv.imshow(canvas, sharpened);
+
+            // Attempt decode
+            const blob: Blob | null = await new Promise((resolve) =>
+              canvas.toBlob((b) => resolve(b), "image/png")
+            );
+
+            if (blob) {
+              const url = URL.createObjectURL(blob);
+              try {
+                const decode = await reader.decodeFromImageUrl(url);
+                if (decode?.text && decode.text !== result) {
+                  setResult(decode.text);
+                }
+              } catch {
+                // ignore decode failure
+              }
+            }
+
+            // Clean up
+            v.delete();
+            vEq.delete();
+            channels.delete();
+            kernel.delete();
+          } catch (err) {
+            console.error("Processing error:", err);
+          } finally {
+            src.delete();
+            hsv.delete();
+            enhancedColor.delete();
+            sharpened.delete();
+          }
+        }
+      );
+    };
+
+    startScanner();
+
+    return () => {
+      controls?.stop();
+    };
+  }, [result]);
+
+  return (
+    <div style={{ textAlign: "center" }}>
+      <h3>Advanced Multi-Color QR Scanner (TSX)</h3>
+
+      <video
+        ref={videoRef}
+        style={{ width: 320, border: "1px solid #ccc", borderRadius: 8 }}
+        autoPlay
+        playsInline
+      />
+
+      <canvas
+        ref={canvasRef}
+        width={320}
+        height={320}
+        style={{ display: "none" }}
+      />
+
+      <p style={{ fontWeight: "bold", marginTop: 12 }}>
+        {result ? `Result: ${result}` : "Scanning..."}
+      </p>
+    </div>
+  );
+};
+
+export default Home;

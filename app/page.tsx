@@ -1,85 +1,123 @@
-'use client';
+"use client";
 
-import React, { useState } from 'react';
-import { Scanner } from '@yudiel/react-qr-scanner';
+import { useEffect, useRef, useState } from "react";
 
-export default function Home() {
-  
-  const [stringQR, setStringQR] = useState('');
-  const [name, setName] = useState('');
-  const [gender, setGender] = useState('');
-  const [dob, setDob] = useState('');
-  const [age, setAge] = useState<number | null>(null);
-  const [status, setStatus] = useState('');
+// ZXing được load từ CDN như trong code gốc
+// <script src="https://unpkg.com/@zxing/library@latest"></script>
+// Khi chạy trong Next.js, bạn có thể thêm script này vào _document.tsx hoặc _app.tsx
+// và dùng window.ZXing trong component.
 
-  const [isPaused, setIsPaused] = useState(false);
+declare global {
+  interface Window {
+    ZXing: any;
+  }
+}
 
-  const handleScan = (result: any) => {
-    if (!result) return;
-    const raw = result[0]?.rawValue;
-    setStringQR(raw);
-    console.log('Scanned QR Code:', raw);
-    // Tách chuỗi theo dấu |
-    const parts = raw.split('|');
-    if (parts.length >= 3) {
-      setName(parts[2]);
-      setDob(parts[3]);
-      setGender(parts[4]);
+export default function ZXingDemo() {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const resultRef = useRef<HTMLPreElement>(null);
+  const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
+  const [selectedDeviceId, setSelectedDeviceId] = useState<string | undefined>();
 
-      const dobRaw = parts[3];
-      
-      if (dobRaw.length === 8) {
-        const day = dobRaw.substring(0, 2);
-        const month = dobRaw.substring(2, 4);
-        const year = dobRaw.substring(4, 8);
-        const formattedDob = `${day}/${month}/${year}`;
-        setDob(formattedDob);
+  useEffect(() => {
+    if (!window.ZXing) return;
+    const codeReader = new window.ZXing.BrowserQRCodeReader();
+    console.log("ZXing code reader initialized");
 
-        // Tính tuổi
-        const birthDate = new Date(`${year}-${month}-${day}`);
-        const today = new Date();
-        let calculatedAge = today.getFullYear() - birthDate.getFullYear();
-        const m = today.getMonth() - birthDate.getMonth();
-        if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) {
-          calculatedAge--;
+    codeReader.getVideoInputDevices().then((videoInputDevices: MediaDeviceInfo[]) => {
+      setDevices(videoInputDevices);
+      if (videoInputDevices.length > 0) {
+        setSelectedDeviceId(videoInputDevices[0].deviceId);
+      }
+    }).catch((err: any) => console.error(err));
+  }, []);
+
+  const decodeOnce = () => {
+    if (!window.ZXing || !selectedDeviceId) return;
+    const codeReader = new window.ZXing.BrowserQRCodeReader();
+    codeReader.decodeFromInputVideoDevice(selectedDeviceId, videoRef.current)
+      .then((result: any) => {
+        console.log(result);
+        if (resultRef.current) resultRef.current.textContent = result.text;
+      })
+      .catch((err: any) => {
+        console.error(err);
+        if (resultRef.current) resultRef.current.textContent = String(err);
+      });
+  };
+
+  const decodeContinuously = () => {
+    if (!window.ZXing || !selectedDeviceId) return;
+    const codeReader = new window.ZXing.BrowserQRCodeReader();
+    codeReader.decodeFromInputVideoDeviceContinuously(
+      selectedDeviceId,
+      videoRef.current,
+      (result: any, err: any) => {
+        if (result) {
+          console.log("Found QR code!", result);
+          if (resultRef.current) resultRef.current.textContent = result.text;
         }
-        setAge(calculatedAge);
-
-        if (calculatedAge > 18) {
-          setStatus('Trên 18 tuổi');
-        } else if (calculatedAge === 18) {
-          setStatus('Đủ 18 tuổi');
-        } else {
-          setStatus('Chưa đủ 18 tuổi');
+        if (err) {
+          if (err instanceof window.ZXing.NotFoundException) {
+            console.log("No QR code found.");
+          }
+          if (err instanceof window.ZXing.ChecksumException) {
+            console.log("Checksum error.");
+          }
+          if (err instanceof window.ZXing.FormatException) {
+            console.log("Format error.");
+          }
         }
       }
-    }
+    );
+  };
+
+  const reset = () => {
+    if (!window.ZXing) return;
+    const codeReader = new window.ZXing.BrowserQRCodeReader();
+    codeReader.reset();
+    if (resultRef.current) resultRef.current.textContent = "";
+    console.log("Reset.");
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '20px' }}>
-      <h2 style={{ marginTop: '20px' }}>Kiểm tra thông tin customer</h2>
-      <Scanner
-        onScan={handleScan}
-        components={{
-          onOff: true, // Show camera on/off button
-          torch: true, // Show torch/flashlight button (if supported)
-          zoom: true, // Show zoom control (if supported)
-          finder: true, // Show finder overlay
-        }}
-        paused={isPaused}
-      />
-      <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', alignSelf: 'flex-start', gap: '0' }}>
-        <span>Họ tên: {name}</span>
-        <br />
-        <span>Giới tính: {gender}</span>
-        <br />
-        <span>Ngày sinh: {dob}</span>
-        <br />
-        <span>Tuổi: {age}</span>
-        <br/>
-        <span style={{ fontWeight: 'bold', color: age !== null && age < 18 ? 'red' : 'green' }}>Trạng thái: {status}</span>
-      </div>
-    </div>
+    <main style={{ paddingTop: "2em" }}>
+      <section>
+        <h1>Scan QR Code from Video Camera</h1>
+
+        <div>
+          <button onClick={decodeOnce}>Start Once</button>
+          <button onClick={decodeContinuously}>Start Continuously</button>
+          <button onClick={reset}>Reset</button>
+        </div>
+
+        <div>
+          <video ref={videoRef} width={300} height={200} style={{ border: "1px solid gray" }} />
+        </div>
+
+        {devices.length > 1 && (
+          <div>
+            <label htmlFor="sourceSelect">Change video source:</label>
+            <select
+              id="sourceSelect"
+              value={selectedDeviceId}
+              onChange={(e) => setSelectedDeviceId(e.target.value)}
+              style={{ maxWidth: "400px" }}
+            >
+              {devices.map((d) => (
+                <option key={d.deviceId} value={d.deviceId}>
+                  {d.label || d.deviceId}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        <div>
+          <label>Result:</label>
+          <pre ref={resultRef}></pre>
+        </div>
+      </section>
+    </main>
   );
 }
